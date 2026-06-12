@@ -1,0 +1,102 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: myapp
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: myapp
+  template:
+    metadata:
+      labels:
+        app: myapp
+    spec:
+      containers:
+      - name: myapp
+        image: tamizh2022/promethus-hpa-collector:v1
+        ports:
+        - containerPort: 80
+        resources:
+          requests:
+            cpu: "100m"
+            memory: "64Mi"
+          limits:
+            cpu: "500m"
+            memory: "128Mi"
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: myapp
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: myapp
+  minReplicas: 1
+  maxReplicas: 5
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 50
+  - type: Pods
+    pods:
+      metric:
+        name: http_requests_per_second
+      target:
+        type: AverageValue
+        averageValue: "10" # If average requests/sec per pod > 10.HPA scales out
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: myapp
+spec:
+  selector:
+    app: myapp
+  ports:
+  - port: 80
+    targetPort: 8080
+
+# kubectl port-forward svc/myapp 8080:80
+
+# Generate traffic
+# kubectl run load-generator --rm -it --image=busybox -- sh  or
+# kubectl run load-gen --rm -it --image=curlimages/curl -- sh
+
+# while true; do
+#   wget -q -O- http://myapp;
+# done
+
+# or
+
+
+# while true; do
+#   curl http://myapp;
+# done
+
+# Deploy a small app that exposes Prometheus metrics.
+# Install Prometheus + Prometheus Adapter.
+# Create an HPA based on http_requests_total or requests/sec.
+# Generate traffic with hey.
+# docker build -t tamizh2022/promethus-hpa-collector:v1 .
+# docker push tamizh2022/promethus-hpa-collector:v1
+# Your application must expose a metric such as: http_requests_total
+# Flow:
+# Any Custom Metrics: App → /metrics → Prometheus scrapes metrics → Prometheus Adapter exposes metrics to→ Kubernetes Custom Metrics API → HPA reads custom metrics
+# CPU: Metrics Server → Kubernetes HPA → CPU usage
+
+# helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
+
+# helm repo update
+
+# helm upgrade --install prometheus prometheus-community/kube-prometheus-stack --set prometheus-node-exporter.image.repository=prom/node-exporter 
+
+# or 
+
+# helm upgrade prometheus prometheus-community/kube-prometheus-stack \
+#   --set prometheus-node-exporter.enabled=false
